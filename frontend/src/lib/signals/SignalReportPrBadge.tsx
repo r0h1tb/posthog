@@ -14,13 +14,14 @@ export function PrBadge({
     prUrl?: string | null
     state: PrBadgeState
 }): JSX.Element {
-    const { label, className } = PR_BADGE_STATE[state]
+    const { label, className, hoverClassName } = PR_BADGE_STATE[state]
     const StateIcon = state === 'merged' ? IconCheck : state === 'closed' ? IconX : IconPullRequest
     const badge = (
         <span
             className={cn(
-                'inline-flex h-5 items-center gap-1 rounded-full border px-1.5 text-xs font-medium',
-                className
+                'inline-flex h-5 items-center gap-1 rounded-full border px-1.5 text-xs font-medium transition-colors',
+                className,
+                prUrl && `cursor-pointer ${hoverClassName}`
             )}
         >
             <StateIcon className="size-3" />
