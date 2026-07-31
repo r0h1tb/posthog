@@ -19,12 +19,11 @@ export function PrBadge({
     const badge = (
         <span
             className={cn(
-                'inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-xs font-medium shadow-sm',
+                'inline-flex h-5 items-center gap-1 rounded-full border px-1.5 text-xs font-medium',
                 className
             )}
         >
-            <StateIcon className="size-3.5" />
-            <span>{label}</span>
+            <StateIcon className="size-3" />
             <span className="font-mono tabular-nums">#{prNumber}</span>
         </span>
     )
