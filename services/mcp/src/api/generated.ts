@@ -46688,6 +46688,7 @@ export namespace Schemas {
       readonly runtime: RuntimeEnum;
       /** @nullable */
       repository: string | null;
+      repositories: string[];
       /** @nullable */
       github_integration: number | null;
       /** @nullable */
@@ -54745,6 +54746,12 @@ export namespace Schemas {
          * @nullable
          */
       repository?: string | null;
+      /**
+         * GitHub repositories available to this task, each in `organization/repo` format.
+         * @maxItems 10
+         * @items.maxLength 255
+         */
+      repositories?: string[];
       /**
          * GitHub integration for this task.
          * @nullable
@@ -69477,6 +69484,12 @@ export namespace Schemas {
          */
       repository?: string | null;
       /**
+         * GitHub repositories available to this task, each in `organization/repo` format.
+         * @maxItems 10
+         * @items.maxLength 255
+         */
+      repositories?: string[];
+      /**
          * GitHub integration for this task.
          * @nullable
          */
@@ -70528,6 +70541,12 @@ export namespace Schemas {
          * @nullable
          */
       repository?: string | null;
+      /**
+         * GitHub repositories available to this task, each in `organization/repo` format.
+         * @maxItems 10
+         * @items.maxLength 255
+         */
+      repositories?: string[];
       /**
          * GitHub integration for this task.
          * @nullable
