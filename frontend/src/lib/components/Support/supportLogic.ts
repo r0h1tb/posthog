@@ -783,6 +783,5 @@ export const supportLogic = kea<supportLogicType>([
                 actions.updateUrlParams()
             }
         },
-
     })),
 ])
