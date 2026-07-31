@@ -548,6 +548,10 @@ def duckgres_data_imports_table_name(schema: ExternalDataSchema) -> str:
     Must stay byte-identical to what the copy workflow computes so the reader resolves to the same
     table the writer produced.
     """
+    pinned_name = getattr(schema, "duckgres_table_name", None)
+    if isinstance(pinned_name, str) and pinned_name:
+        return pinned_name
+
     source_type = schema.source.source_type
     prefix = schema.source.prefix
     normalized_name = schema.normalized_name

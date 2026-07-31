@@ -18,6 +18,7 @@ from posthog.models.activity_logging.model_activity import ModelActivityMixin
 from posthog.models.utils import CreatedMetaFields, DeletedMetaFields, UpdatedMetaFields, UUIDTModel, sane_repr
 from posthog.sync import database_sync_to_async
 
+from products.warehouse_sources.backend.duckgres_naming import canonical_duckgres_table_name
 from products.warehouse_sources.backend.temporal.data_imports.naming_convention import NamingConvention
 from products.warehouse_sources.backend.temporal.data_imports.sources.common.typings import (
     PartitionFormat,
@@ -86,6 +87,7 @@ class ExternalDataSchema(ModelActivityMixin, CreatedMetaFields, UpdatedMetaField
     # during multi-schema migration) to their original path. Empty for rows written before this
     # column existed — readers fall back to the legacy JSON key, then the normalized schema `name`.
     s3_folder_name = models.CharField(max_length=400, null=True, blank=True)
+    duckgres_table_name = models.CharField(max_length=63, null=True, blank=True)
     # Deprecated in favour of `sync_frequency_interval`
     sync_frequency = deprecate_field(
         models.CharField(max_length=128, choices=SyncFrequency, default=SyncFrequency.DAILY, blank=True)
@@ -106,6 +108,16 @@ class ExternalDataSchema(ModelActivityMixin, CreatedMetaFields, UpdatedMetaField
         db_table = "posthog_externaldataschema"
 
     def save(self, *args: Any, skip_activity_log: bool = False, **kwargs: Any) -> None:
+        if self._state.adding and not self.duckgres_table_name:
+            self.duckgres_table_name = canonical_duckgres_table_name(
+                self.source.source_type,
+                self.source.prefix,
+                self.normalized_name,
+            )
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "duckgres_table_name"}
+
         # Populate the S3 folder on first write so the column is always authoritative for new rows.
         # Legacy/qualified rows set it explicitly before renaming (see `_qualify_legacy_row`); this
         # only fills it when empty, so an existing folder is never overwritten by a later rename.

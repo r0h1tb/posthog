@@ -8,6 +8,7 @@ from parameterized import parameterized
 
 from posthog.ducklake.common import (
     default_bucket_region,
+    duckgres_data_imports_table_name,
     initialize_ducklake,
     is_version_mismatch,
     reset_ducklake_catalog,
@@ -51,6 +52,32 @@ class TestDefaultBucketRegion:
     def test_region_follows_cloud_deployment(self, _name, deployment, expected):
         with override_settings(CLOUD_DEPLOYMENT=deployment):
             assert default_bucket_region() == expected
+
+
+class TestDuckgresDataImportsTableName:
+    @parameterized.expand(
+        [
+            ("legacy_mysql", None, "MySQL", "SalesEU", "orders", "mysql_saleseu_orders"),
+            ("legacy_google_ads", None, "GoogleAds", None, "video", "googleads_video"),
+            ("pinned_canonical", "googleads_video_4f12abcd", "GoogleAds", None, "video", "googleads_video_4f12abcd"),
+        ]
+    )
+    def test_pinned_name_wins_and_null_uses_legacy_algorithm(
+        self,
+        _name: str,
+        pinned_name: str | None,
+        source_type: str,
+        prefix: str | None,
+        normalized_name: str,
+        expected: str,
+    ) -> None:
+        schema = MagicMock()
+        schema.duckgres_table_name = pinned_name
+        schema.source.source_type = source_type
+        schema.source.prefix = prefix
+        schema.normalized_name = normalized_name
+
+        assert duckgres_data_imports_table_name(schema) == expected
 
 
 TEST_CONFIG = {

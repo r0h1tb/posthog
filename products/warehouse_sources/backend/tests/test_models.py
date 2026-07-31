@@ -76,17 +76,20 @@ def test_resolved_s3_folder_name(
 
 
 class TestExternalDataSchemaSave(BaseTest):
-    def _source(self) -> ExternalDataSource:
+    def _source(self, source_type: str = "Postgres", prefix: str | None = None) -> ExternalDataSource:
         return ExternalDataSource.objects.create(
             team_id=self.team.pk,
             source_id=str(uuid.uuid4()),
             connection_id=str(uuid.uuid4()),
             status="Completed",
-            source_type="Postgres",
+            source_type=source_type,
+            prefix=prefix,
         )
 
-    def _create(self, name: str, **kwargs) -> ExternalDataSchema:
-        return ExternalDataSchema.objects.create(team_id=self.team.pk, source=self._source(), name=name, **kwargs)
+    def _create(self, name: str, *, source: ExternalDataSource | None = None, **kwargs) -> ExternalDataSchema:
+        return ExternalDataSchema.objects.create(
+            team_id=self.team.pk, source=source or self._source(), name=name, **kwargs
+        )
 
     def test_save_populates_s3_folder_name_from_name(self) -> None:
         # The folder is the normalized name — never NULL for a new row.
@@ -114,6 +117,21 @@ class TestExternalDataSchemaSave(BaseTest):
         schema.save(update_fields=["status", "updated_at"])
         schema.refresh_from_db()
         assert schema.s3_folder_name == "orders"
+
+    def test_new_schema_pins_canonical_duckgres_name(self) -> None:
+        schema = self._create("customer_orders", source=self._source("MySQL", "SalesEU"))
+        assert schema.duckgres_table_name == "mysql_saleseu_customer_orders"
+
+    def test_existing_schema_without_pin_stays_on_legacy_naming(self) -> None:
+        schema = self._create("orders", source=self._source("MySQL", "SalesEU"))
+        ExternalDataSchema.objects.filter(pk=schema.pk).update(duckgres_table_name=None)
+        schema.refresh_from_db()
+
+        schema.status = "Completed"
+        schema.save(update_fields=["status", "updated_at"])
+        schema.refresh_from_db()
+
+        assert schema.duckgres_table_name is None
 
 
 class TestExternalDataSchemaActivityLogging(BaseTest):
