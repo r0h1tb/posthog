@@ -80,14 +80,7 @@ export const INBOX_SORT_OPTIONS: InboxSortOption[] = [
     { label: 'Oldest first', field: 'created_at', direction: 'asc', icon: <IconClock /> },
 ]
 
-export interface InboxSourceOption {
-    value: string
-    label: string
-    icon: JSX.Element
-    description?: string
-}
-
-export const INBOX_SOURCE_OPTIONS: InboxSourceOption[] = [
+export const INBOX_SOURCE_OPTIONS: { value: string; label: string; icon: JSX.Element }[] = [
     { value: 'session_replay', label: 'Session replay', icon: <IconRewindPlay /> },
     { value: 'replay_vision', label: 'Replay vision', icon: <IconEye /> },
     { value: 'error_tracking', label: 'Error tracking', icon: <IconBug /> },
@@ -102,8 +95,6 @@ export const INBOX_SOURCE_OPTIONS: InboxSourceOption[] = [
         value: 'engineering_analytics',
         label: 'Engineering analytics',
         icon: <IconGear />,
-        description:
-            'Findings from CI checks, including flaky checks, broken default branches, and build time regressions.',
     },
     { value: 'signals_scout', label: 'Scout', icon: <IconCompass /> },
 ]

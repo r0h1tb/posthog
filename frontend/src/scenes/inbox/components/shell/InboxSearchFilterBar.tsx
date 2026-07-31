@@ -1,17 +1,8 @@
 import { useActions, useValues } from 'kea'
 import { useEffect, useState } from 'react'
 
-import {
-    IconCheck,
-    IconChevronDown,
-    IconFlag,
-    IconInfo,
-    IconRefresh,
-    IconSearch,
-    IconSort,
-    IconTarget,
-} from '@posthog/icons'
-import { LemonButton, LemonDropdown, LemonInput, Tooltip } from '@posthog/lemon-ui'
+import { IconCheck, IconChevronDown, IconFlag, IconRefresh, IconSearch, IconSort, IconTarget } from '@posthog/icons'
+import { LemonButton, LemonDropdown, LemonInput } from '@posthog/lemon-ui'
 
 import {
     INBOX_PRIORITY_OPTIONS,
@@ -237,18 +228,7 @@ export function InboxSearchFilterBar({
                         <div key={option.value}>
                             <FilterItem
                                 icon={option.icon}
-                                label={
-                                    option.description ? (
-                                        <span className="flex min-w-0 items-center gap-1">
-                                            <span className="truncate">{option.label}</span>
-                                            <Tooltip title={option.description}>
-                                                <IconInfo className="shrink-0 text-tertiary" />
-                                            </Tooltip>
-                                        </span>
-                                    ) : (
-                                        option.label
-                                    )
-                                }
+                                label={option.label}
                                 active={sourceProductFilter.includes(option.value)}
                                 onClick={() => toggleSourceProduct(option.value)}
                             />
