@@ -49,7 +49,7 @@ function FilterPopover({
             onVisibilityChange={setVisible}
             matchWidth={false}
             actionable
-            placement="bottom-start"
+            placement="bottom-end"
             overlay={<div className="min-w-[200px] max-w-[260px] p-1 deprecated-space-y-px">{children}</div>}
         >
             <button
@@ -58,7 +58,7 @@ function FilterPopover({
                 // Quiet at rest: an unused filter is a muted, borderless chip showing its category
                 // (e.g. "Source"). Once active it gains a solid border and its selected value — so
                 // the bar only draws attention to filters actually in use.
-                className={`flex h-8 w-28 shrink-0 items-center gap-1.5 rounded border px-2.5 text-sm transition-colors ${
+                className={`flex h-8 shrink-0 items-center gap-1.5 rounded border px-2.5 text-sm transition-colors ${
                     active
                         ? 'border-primary bg-surface-primary text-default hover:border-secondary hover:bg-surface-secondary'
                         : 'border-transparent text-muted hover:border-primary hover:bg-surface-secondary hover:text-default'
