@@ -58,6 +58,7 @@ from products.tasks.backend.models import (
     ChannelFeedMessage,
     CodeInvite,
     CodeInviteRedemption,
+    MCPBuiltInAgentKey,
     SandboxCustomImage,
     SandboxEnvironment,
     SandboxSession,
@@ -1057,6 +1058,7 @@ def create_task_without_run(
     title: str = "",
     description: str = "",
     repository: str | None = None,
+    mcp_builtin_agent_key: MCPBuiltInAgentKey | None = None,
 ) -> UUID:
     """Create a Task row with no initial run, returning its id.
 
@@ -1070,6 +1072,7 @@ def create_task_without_run(
         origin_product=origin_product,
         user_id=user_id,
         repository=repository,
+        mcp_builtin_agent_key=mcp_builtin_agent_key,
     )
     return task.id
 
@@ -5719,7 +5722,8 @@ def _task_activity_qs(team_id: int, user_id: int) -> QuerySet[TaskActivity]:
     Rows outlive visibility changes (a task moving to a private channel, say), so the
     visibility gate belongs on read rather than being enforced when projecting.
     """
-    return TaskActivity.objects.filter(team_id=team_id, user_id=user_id, task__in=_visible_task_qs(team_id, user_id))
+    visible_tasks = _visible_task_qs(team_id, user_id).filter(internal=False, archived=False)
+    return TaskActivity.objects.filter(team_id=team_id, user_id=user_id, task__in=visible_tasks)
 
 
 def count_unread_task_activity(team_id: int, user_id: int | None) -> int:
