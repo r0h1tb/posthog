@@ -1,4 +1,3 @@
-import { TZLabel } from 'lib/components/TZLabel'
 import { LemonMarkdown } from 'lib/lemon-ui/LemonMarkdown'
 
 import { SignalCardShell } from './SignalCardShell'
@@ -12,10 +11,6 @@ export function GenericSignalCard({ signal }: SignalCardProps): JSX.Element {
                     {signal.content}
                 </LemonMarkdown>
             )}
-
-            <div className="text-xs text-tertiary">
-                <TZLabel time={signal.timestamp} />
-            </div>
         </SignalCardShell>
     )
 }

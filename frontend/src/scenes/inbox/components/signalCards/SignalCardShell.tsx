@@ -1,3 +1,4 @@
+import { TZLabel } from 'lib/components/TZLabel'
 import { LemonCard } from 'lib/lemon-ui/LemonCard'
 import { ScoutLink } from 'lib/signals/ScoutLink'
 import { scoutDisplayName, signalCardSourceLine } from 'lib/signals/signalCardSourceLine'
@@ -5,10 +6,6 @@ import type { SignalNode } from 'scenes/debug/signals/types'
 
 import { getSourceProductMeta } from '../badges/sourceProductIcons'
 
-/**
- * Header shared by every signal card: the source product's brand icon, the human
- * "Product · Signal type" line, and an optional label/right slot.
- */
 export function SignalCardHeader({
     signal,
     label,
@@ -39,7 +36,7 @@ export function SignalCardHeader({
             ) : (
                 <span className="size-2.5 rounded-full shrink-0 bg-border" />
             )}
-            <span className="text-xs font-medium text-tertiary">
+            <span className="text-xs font-medium text-tertiary whitespace-nowrap">
                 {scoutName && typeof scoutSkillName === 'string' ? (
                     <>
                         Scout · <ScoutLink skillName={scoutSkillName} className="text-tertiary" />
@@ -47,6 +44,8 @@ export function SignalCardHeader({
                 ) : (
                     signalCardSourceLine(signal)
                 )}
+                {' · '}
+                <TZLabel time={signal.timestamp} />
             </span>
             {label && <span className="text-xs font-medium text-primary flex-1 truncate">{label}</span>}
             <span className="flex-1" />
