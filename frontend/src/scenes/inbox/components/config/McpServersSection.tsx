@@ -14,7 +14,7 @@ export function McpServersSection(): JSX.Element {
                 <div className="min-w-0">
                     <div className="font-medium text-sm text-default">Manage MCP servers</div>
                     <p className="text-xs text-secondary mt-0.5 mb-0 max-w-xl">
-                        External tools agents can read from. PostHog data is always available; this is everything else —
+                        External tools agents can read from. PostHog data is always available. This is everything else,
                         connect or disconnect Notion, PagerDuty, Linear, Zendesk, GitHub, anything that speaks MCP.
                     </p>
                 </div>

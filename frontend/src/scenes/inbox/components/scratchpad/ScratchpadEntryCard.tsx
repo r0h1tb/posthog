@@ -1,8 +1,8 @@
 import { useActions, useValues } from 'kea'
 import { type ComponentProps } from 'react'
 
-import { IconChevronDown, IconClock } from '@posthog/icons'
-import { LemonTag, Link } from '@posthog/lemon-ui'
+import { IconClock } from '@posthog/icons'
+import { LemonCollapse, LemonTag, Link } from '@posthog/lemon-ui'
 
 import { dayjs } from 'lib/dayjs'
 import { LemonMarkdown } from 'lib/lemon-ui/LemonMarkdown'
@@ -37,15 +37,6 @@ function splitKey(key: string): { kind: string | null; body: string } {
     return idx > 0 ? { kind: key.slice(0, idx), body: key.slice(idx + 1) } : { kind: null, body: key }
 }
 
-/**
- * One scratchpad note the scout fleet has written about this project. Shares the collapse/expand
- * grammar of the scout emission cards: a header (chevron · kind · key · updated time) that stays
- * visible, a 2-line markdown preview when collapsed, the full body plus an attribution footer
- * (which scout created it, when, and how long it's been carried forward) when open.
- *
- * The list only carries previews, so a long note's tail arrives on expand — until it lands, the
- * preview stays on screen with a skeleton under it rather than the card going blank.
- */
 export function ScratchpadEntryCard({ entry }: { entry: ScratchpadEntryApi }): JSX.Element {
     const { expandedKeys, fullContentByKey, loadingContentKeys } = useValues(scratchpadLogic)
     const { toggleEntry } = useActions(scratchpadLogic)
@@ -64,65 +55,86 @@ export function ScratchpadEntryCard({ entry }: { entry: ScratchpadEntryApi }): J
         entry.created_at && entry.updated_at ? dayjs(entry.updated_at).diff(dayjs(entry.created_at), 'day') : 0
 
     return (
-        <div className="flex flex-col rounded border border-primary bg-bg-light">
-            <button
-                type="button"
-                onClick={() => toggleEntry(entry.key)}
-                className="flex items-center gap-2 px-3 py-2 text-left"
-                aria-expanded={expanded}
-            >
-                <IconChevronDown
-                    className={`size-4 shrink-0 text-muted transition-transform ${expanded ? '' : '-rotate-90'}`}
-                />
-                {kind && (
-                    <LemonTag type={KIND_TAG_TYPE[kind] ?? 'muted'} size="small" className="shrink-0">
-                        {kind}
-                    </LemonTag>
-                )}
-                <span className="truncate font-mono text-xs text-primary">{body}</span>
-                <span className="flex-1" />
-                {entry.updated_at && (
-                    <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted">
-                        <IconClock className="size-3" />
-                        {humanFriendlyDetailedTime(entry.updated_at)}
-                    </span>
-                )}
-            </button>
-
-            <div className="px-3 pb-2 pl-9">
-                <LemonMarkdown
-                    disableImages
-                    className={expanded ? 'text-sm text-primary' : 'text-sm text-primary line-clamp-2'}
-                >
-                    {content || '_No content._'}
-                </LemonMarkdown>
-
-                {expanded && isLoadingContent && <LemonSkeleton className="h-4 w-2/3 mt-1" />}
-
-                {expanded && (entry.created_at || scoutName || entry.created_by_run_id) && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 mt-2 text-xs text-tertiary">
-                        {entry.created_at && <span>Created {humanFriendlyDetailedTime(entry.created_at)}</span>}
-                        {maintainedDays >= 1 && (
-                            <span>· carried forward {maintainedDays === 1 ? '1 day' : `${maintainedDays} days`}</span>
-                        )}
-                        <span className="flex-1" />
-                        {(scoutName || entry.created_by_run_id) && (
-                            <span className="shrink-0">
-                                by{' '}
-                                {entry.created_by_run_url ? (
-                                    <Link to={entry.created_by_run_url}>
-                                        {scoutName ? `${scoutName} scout` : 'a scout'}
-                                    </Link>
-                                ) : scoutName ? (
-                                    `${scoutName} scout`
-                                ) : (
-                                    'a scout'
+        <LemonCollapse
+            activeKey={expanded ? entry.key : undefined}
+            onChange={(activeKey) => {
+                if ((activeKey === entry.key) !== expanded) {
+                    toggleEntry(entry.key)
+                }
+            }}
+            panels={[
+                {
+                    key: entry.key,
+                    header: (
+                        <div className="flex min-w-0 flex-1 flex-col gap-2 py-1 text-left">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    {kind && (
+                                        <LemonTag
+                                            type={KIND_TAG_TYPE[kind] ?? 'muted'}
+                                            size="small"
+                                            className="shrink-0"
+                                        >
+                                            {kind}
+                                        </LemonTag>
+                                    )}
+                                    <span className="truncate font-mono text-xs text-primary">{body}</span>
+                                </div>
+                                {entry.updated_at && (
+                                    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted">
+                                        <IconClock className="size-3" />
+                                        {humanFriendlyDetailedTime(entry.updated_at)}
+                                    </span>
                                 )}
-                            </span>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
+                            </div>
+                            {!expanded && (
+                                <LemonMarkdown disableImages className="line-clamp-2 text-sm text-primary">
+                                    {content || '_No content._'}
+                                </LemonMarkdown>
+                            )}
+                        </div>
+                    ),
+                    content: (
+                        <div className="flex flex-col gap-2">
+                            <LemonMarkdown disableImages className="text-sm text-primary">
+                                {content || '_No content._'}
+                            </LemonMarkdown>
+
+                            {isLoadingContent && <LemonSkeleton className="h-4 w-2/3" />}
+
+                            {(entry.created_at || scoutName || entry.created_by_run_id) && (
+                                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t pt-2 text-xs text-tertiary">
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                        {entry.created_at && (
+                                            <span>Created {humanFriendlyDetailedTime(entry.created_at)}</span>
+                                        )}
+                                        {maintainedDays >= 1 && (
+                                            <span>
+                                                Carried forward{' '}
+                                                {maintainedDays === 1 ? '1 day' : `${maintainedDays} days`}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {(scoutName || entry.created_by_run_id) && (
+                                        <span className="shrink-0">
+                                            by{' '}
+                                            {entry.created_by_run_url ? (
+                                                <Link to={entry.created_by_run_url}>
+                                                    {scoutName ? `${scoutName} scout` : 'a scout'}
+                                                </Link>
+                                            ) : scoutName ? (
+                                                `${scoutName} scout`
+                                            ) : (
+                                                'a scout'
+                                            )}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ),
+                },
+            ]}
+        />
     )
 }

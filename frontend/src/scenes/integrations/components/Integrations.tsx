@@ -1,4 +1,5 @@
 import { useActions, useValues } from 'kea'
+import { router } from 'kea-router'
 import { PropsWithChildren, useMemo, useState } from 'react'
 
 import { LemonButton } from '@posthog/lemon-ui'
@@ -6,6 +7,7 @@ import { LemonButton } from '@posthog/lemon-ui'
 import api from 'lib/api'
 import { integrationsLogic } from 'lib/integrations/integrationsLogic'
 import { IntegrationView } from 'lib/integrations/IntegrationView'
+import { getRelativeNextPath } from 'lib/utils/url'
 import { GitLabSetupModal } from 'scenes/integrations/gitlab/GitLabSetupModal'
 import { teamLogic } from 'scenes/teamLogic'
 import { urls } from 'scenes/urls'
@@ -30,11 +32,13 @@ export function LinearIntegration({ next }: { next?: string }): JSX.Element {
 
 export function GithubIntegration({ next }: { next?: string }): JSX.Element {
     const { currentTeam } = useValues(teamLogic)
+    const { searchParams } = useValues(router)
     const { linkedGithubInstallationLoading } = useValues(integrationsLogic)
     const { linkExistingGithubInstallation } = useActions(integrationsLogic)
     const githubIntegrations = useIntegrations('github')
 
-    const settingsPath = next ?? urls.settings('environment-integrations')
+    const settingsPath =
+        next ?? getRelativeNextPath(searchParams.next, window.location) ?? urls.settings('environment-integrations')
     const authorizationUrl = api.integrations.authorizeUrl({
         next: currentTeam?.id ? urls.project(currentTeam.id, settingsPath) : settingsPath,
         kind: 'github',

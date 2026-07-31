@@ -167,11 +167,11 @@ export function deriveTaskPurpose(content: TaskRunArtefactContent): DerivedPurpo
         if (content.type === 'scout') {
             return { purpose: 'other', purposeLabel: 'Scout' }
         }
-        return { purpose: 'other', purposeLabel: `Signals — ${identifierToHuman(content.type)}` }
+        return { purpose: 'other', purposeLabel: `Signals: ${identifierToHuman(content.type)}` }
     }
     return {
         purpose: 'other',
-        purposeLabel: `${identifierToHuman(content.product)} — ${identifierToHuman(content.type)}`,
+        purposeLabel: `${identifierToHuman(content.product)}: ${identifierToHuman(content.type)}`,
     }
 }
 

@@ -1,20 +1,19 @@
-import { useValues } from 'kea'
 import { useState } from 'react'
 
-import { IconChevronDown, IconChevronRight, IconExternal } from '@posthog/icons'
-import { LemonTag, Link } from '@posthog/lemon-ui'
+import { IconExternal } from '@posthog/icons'
+import { LemonTag, Link, ProfilePicture } from '@posthog/lemon-ui'
 
 import { CodeSnippet, Language } from 'lib/components/CodeSnippet'
 import { TZLabel } from 'lib/components/TZLabel'
 import { LemonMarkdown } from 'lib/lemon-ui/LemonMarkdown'
 import { capitalizeFirstLetter } from 'lib/utils/strings'
-import { preflightLogic } from 'scenes/PreflightCheck/preflightLogic'
 
 import { Task } from 'products/posthog_ai/frontend/types/taskTypes'
 
 import { EnrichedReviewer, SignalReportActionability, SignalReportPriority, SignalReportArtefact } from '../../types'
 import { SignalReportActionabilityBadge } from '../badges/SignalReportActionabilityBadge'
 import { SignalReportPriorityBadge } from '../badges/SignalReportPriorityBadge'
+import { ActivityDisclosure } from './ActivityDisclosure'
 import { ArtefactCommit } from './ArtefactCommit'
 import { ArtefactTaskRun } from './ArtefactTaskRun'
 import {
@@ -111,47 +110,36 @@ function CodeRefBlock({ code, language }: { code: string; language: Language }):
     )
 }
 
-/** Judgment rationale, hidden behind a "Show reasoning" toggle. */
 function CollapsibleReasoning({ text }: { text: string }): JSX.Element {
     const [expanded, setExpanded] = useState(false)
     return (
-        <div className="flex flex-col gap-1">
-            <button
-                type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs text-secondary transition-colors hover:bg-fill-highlight-50"
-            >
-                {expanded ? <IconChevronDown /> : <IconChevronRight />}
-                {expanded ? 'Hide reasoning' : 'Show reasoning'}
-            </button>
-            {expanded ? <span className="text-secondary text-xs">{text}</span> : null}
-        </div>
+        <ActivityDisclosure
+            expanded={expanded}
+            onChange={setExpanded}
+            label="Show reasoning"
+            expandedLabel="Hide reasoning"
+        >
+            <span className="text-xs text-secondary">{text}</span>
+        </ActivityDisclosure>
     )
 }
 
-/** A `note` artefact: a one-line preview that expands to the full markdown body. */
 function CollapsibleNote({ note, author }: { note: string; author?: string }): JSX.Element {
     const [expanded, setExpanded] = useState(false)
     const preview = note.split('\n').find((line) => line.trim()) ?? note
     return (
-        <div className="flex w-full min-w-0 flex-col gap-1">
-            <button
-                type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-secondary transition-colors hover:bg-fill-highlight-50"
-            >
-                {expanded ? <IconChevronDown className="shrink-0" /> : <IconChevronRight className="shrink-0" />}
-                <span className="truncate">{expanded ? 'Hide note' : preview}</span>
-            </button>
-            {expanded ? (
-                <div className="min-w-0">
-                    <LemonMarkdown className="text-xs text-secondary leading-normal" disableImages>
-                        {note}
-                    </LemonMarkdown>
-                    {author?.trim() ? <span className="mt-1 block text-tertiary text-[11px]">— {author}</span> : null}
-                </div>
-            ) : null}
-        </div>
+        <ActivityDisclosure
+            expanded={expanded}
+            onChange={setExpanded}
+            label={<span className="truncate">{preview}</span>}
+            expandedLabel="Hide note"
+            fullWidth
+        >
+            <LemonMarkdown className="text-xs text-secondary leading-normal" disableImages>
+                {note}
+            </LemonMarkdown>
+            {author?.trim() ? <span className="mt-1 block text-xs text-tertiary">By {author}</span> : null}
+        </ActivityDisclosure>
     )
 }
 
@@ -186,38 +174,29 @@ function ContentChangeBody({
         )
     }
     const previousToggle = previous?.trim() ? (
-        <>
-            <button
-                type="button"
-                onClick={() => setShowPrevious((v) => !v)}
-                className="flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs text-secondary transition-colors hover:bg-fill-highlight-50"
-            >
-                {showPrevious ? <IconChevronDown /> : <IconChevronRight />}
-                {showPrevious ? 'Hide previous' : 'Show previous'}
-            </button>
-            {showPrevious ? <div className="min-w-0">{renderText(previous, true)}</div> : null}
-        </>
+        <ActivityDisclosure
+            expanded={showPrevious}
+            onChange={setShowPrevious}
+            label="Show previous"
+            expandedLabel="Hide previous"
+        >
+            {renderText(previous, true)}
+        </ActivityDisclosure>
     ) : null
 
     if (collapse) {
         const preview = current.split('\n').find((line) => line.trim()) ?? current
         return (
-            <div className="flex w-full min-w-0 flex-col gap-1">
-                <button
-                    type="button"
-                    onClick={() => setExpanded((v) => !v)}
-                    className="flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-secondary transition-colors hover:bg-fill-highlight-50"
-                >
-                    {expanded ? <IconChevronDown className="shrink-0" /> : <IconChevronRight className="shrink-0" />}
-                    <span className="truncate">{expanded ? 'Hide new value' : preview}</span>
-                </button>
-                {expanded ? (
-                    <>
-                        <div className="min-w-0">{renderText(current, false)}</div>
-                        {previousToggle}
-                    </>
-                ) : null}
-            </div>
+            <ActivityDisclosure
+                expanded={expanded}
+                onChange={setExpanded}
+                label={<span className="truncate">{preview}</span>}
+                expandedLabel="Hide new value"
+                fullWidth
+            >
+                <div className="min-w-0">{renderText(current, false)}</div>
+                {previousToggle}
+            </ActivityDisclosure>
         )
     }
 
@@ -229,7 +208,6 @@ function ContentChangeBody({
     )
 }
 
-/** The suggested-reviewers list as a point-in-time log entry. */
 function ReviewersBody({ reviewers }: { reviewers: EnrichedReviewer[] }): JSX.Element {
     if (reviewers.length === 0) {
         return <span className="text-tertiary text-xs">No reviewers assigned.</span>
@@ -240,18 +218,13 @@ function ReviewersBody({ reviewers }: { reviewers: EnrichedReviewer[] }): JSX.El
                 const name = reviewer.user?.first_name || reviewer.github_name || reviewer.github_login
                 return (
                     <div key={reviewer.github_login} className="flex items-center gap-2 text-xs">
-                        <img
-                            src={`https://github.com/${reviewer.github_login}.png?size=28`}
-                            alt=""
-                            loading="lazy"
-                            className="size-[18px] shrink-0 rounded-full bg-fill-highlight-50"
-                        />
+                        <ProfilePicture user={reviewer.user} name={name} size="sm" />
                         <span className="truncate text-default">{name}</span>
                         <Link
                             to={`https://github.com/${reviewer.github_login}`}
                             target="_blank"
                             disableClientSideRouting
-                            className="ml-auto flex shrink-0 items-center gap-0.5 font-mono text-tertiary text-[11px]"
+                            className="ml-auto flex shrink-0 items-center gap-0.5 font-mono text-xs text-tertiary"
                         >
                             @{reviewer.github_login}
                             <IconExternal />
@@ -350,7 +323,7 @@ function ArtefactBody({
             return (
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-tertiary text-[11px]">{c.signal_id}</span>
+                        <span className="font-mono text-xs text-tertiary">{c.signal_id}</span>
                         <LemonTag size="small" type={c.verified ? 'success' : 'muted'}>
                             {c.verified ? 'Verified' : 'Unverified'}
                         </LemonTag>
@@ -358,7 +331,7 @@ function ArtefactBody({
                     {paths.length > 0 ? (
                         <div className="flex flex-col">
                             {paths.map((path) => (
-                                <span key={path} className="truncate font-mono text-secondary text-[11px]">
+                                <span key={path} className="truncate font-mono text-xs text-secondary">
                                     {path}
                                 </span>
                             ))}
@@ -391,13 +364,12 @@ function ArtefactBody({
             )
         }
         default: {
-            const preview = typeof (content as { content?: unknown })?.content === 'string'
-            return <span className="text-tertiary text-xs">{preview ? String((content as any).content) : ''}</span>
+            const value = (content as { content?: unknown })?.content
+            return <span className="text-tertiary text-xs">{typeof value === 'string' ? value : ''}</span>
         }
     }
 }
 
-/** One log row: a header (type · location · attribution · timestamp) over the per-type body. */
 function ArtefactRow({
     reportId,
     artefact,
@@ -407,37 +379,25 @@ function ArtefactRow({
     artefact: SignalReportArtefact
     knownTasks?: Map<string, Task>
 }): JSX.Element {
-    const { isDev } = useValues(preflightLogic)
-    const [showRaw, setShowRaw] = useState(false)
     const location = artefactLocationLabel(artefact)
     const attribution = artefactAttributionLabel(artefact)
 
     return (
-        <div className="rounded border border-primary bg-surface-primary p-3">
-            <div className="mb-1.5 flex items-center gap-2 min-w-0">
-                <span className="shrink-0 font-semibold text-xs text-default">{artefactTypeLabel(artefact.type)}</span>
-                {location ? <span className="truncate font-mono text-tertiary text-[11px]">{location}</span> : null}
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                    {attribution ? <span className="text-tertiary text-[11px]">by {attribution}</span> : null}
-                    {isDev ? (
-                        <button
-                            type="button"
-                            onClick={() => setShowRaw((v) => !v)}
-                            className="rounded px-1 font-mono text-tertiary text-[11px] transition-colors hover:bg-fill-highlight-50"
-                            title="Toggle raw JSON (dev only)"
-                        >
-                            {'{ }'}
-                        </button>
-                    ) : null}
-                    <TZLabel time={artefact.created_at} className="text-tertiary text-[11px]" />
+        <div className="relative flex gap-3 pb-5 last:pb-0">
+            <span className="z-10 mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-surface-primary ring-1 ring-primary">
+                <span className="size-2 rounded-full bg-accent" />
+            </span>
+            <div className="min-w-0 flex-1">
+                <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-semibold text-sm text-default">{artefactTypeLabel(artefact.type)}</span>
+                    {location ? <span className="truncate font-mono text-xs text-tertiary">{location}</span> : null}
+                    <div className="ml-auto flex shrink-0 items-center gap-2 text-xs text-tertiary">
+                        {attribution ? <span>By {attribution}</span> : null}
+                        <TZLabel time={artefact.created_at} />
+                    </div>
                 </div>
+                <ArtefactBody reportId={reportId} artefact={artefact} knownTasks={knownTasks} />
             </div>
-            <ArtefactBody reportId={reportId} artefact={artefact} knownTasks={knownTasks} />
-            {isDev && showRaw ? (
-                <pre className="mt-2 max-h-72 overflow-auto rounded bg-fill-highlight-50 p-2 text-[10px] leading-tight">
-                    {JSON.stringify(artefact, null, 2)}
-                </pre>
-            ) : null}
         </div>
     )
 }
@@ -462,7 +422,8 @@ export function ArtefactLogList({
     }
     const ordered = [...artefacts].sort((a, b) => a.created_at.localeCompare(b.created_at))
     return (
-        <div className="flex flex-col gap-2">
+        <div className="relative">
+            <span className="absolute bottom-2 left-2 top-2 w-px bg-border" aria-hidden />
             {ordered.map((artefact) => (
                 <ArtefactRow key={artefact.id} reportId={reportId} artefact={artefact} knownTasks={knownTasks} />
             ))}

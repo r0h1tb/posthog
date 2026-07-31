@@ -13,11 +13,7 @@ export type ScratchpadGrouping = 'recent' | 'topic'
 // Search reruns the server-side ILIKE on every keystroke; debounce so typing doesn't
 // fire a request per character.
 const SEARCH_DEBOUNCE_MS = 300
-// `list` caps at 1000 newest-first with no pagination wrapper — pull the whole window in
-// one read and group/search client-side. The endpoint exposes a `date_to` cursor for
-// walking past the cap; a team that routinely exceeds 1000 wants that wired into a "load
-// more" here, not a bigger single read.
-const SCRATCHPAD_FETCH_LIMIT = 1000
+export const SCRATCHPAD_FETCH_LIMIT = 1000
 // Bodies are an unbounded TextField clamped at 50k chars on write, so a full-fat window of
 // 1000 entries is a payload nobody needs: the card renders a 2-line clamp until you open it.
 // Pull previews for the list and fetch the one body you expand. Sized well past two lines so
@@ -62,9 +58,11 @@ export interface scratchpadLogicValues {
     fullContentByKey: Record<string, string>
     grouping: ScratchpadGrouping
     groups: ScratchpadNamespaceGroup[]
+    hasMore: boolean
     lastUpdatedAt: string | null
     loadFailed: boolean
     loadingContentKeys: string[]
+    loadingMore: boolean
     searchText: string
     totalCount: number | null
 }
@@ -99,6 +97,18 @@ export interface scratchpadLogicActions {
         content: string
         key: string
     }
+    loadMore: () => {
+        value: true
+    }
+    loadMoreFailure: () => {
+        value: true
+    }
+    loadMoreSuccess: (newEntries: ScratchpadEntryApi[]) => {
+        newEntries: ScratchpadEntryApi[]
+    }
+    setExpandedNamespaces: (expandedNamespaces: string[]) => {
+        expandedNamespaces: string[]
+    }
     setGrouping: (grouping: ScratchpadGrouping) => {
         grouping: ScratchpadGrouping
     }
@@ -107,9 +117,6 @@ export interface scratchpadLogicActions {
     }
     toggleEntry: (key: string) => {
         key: string
-    }
-    toggleNamespace: (namespace: string) => {
-        namespace: string
     }
 }
 
@@ -141,11 +148,14 @@ export const scratchpadLogic = kea<scratchpadLogicType>([
     actions({
         setSearchText: (searchText: string) => ({ searchText }),
         setGrouping: (grouping: ScratchpadGrouping) => ({ grouping }),
-        toggleNamespace: (namespace: string) => ({ namespace }),
+        setExpandedNamespaces: (expandedNamespaces: string[]) => ({ expandedNamespaces }),
         toggleEntry: (key: string) => ({ key }),
         loadFullContent: (key: string) => ({ key }),
         loadFullContentSuccess: (key: string, content: string) => ({ key, content }),
         loadFullContentFailure: (key: string) => ({ key }),
+        loadMore: true,
+        loadMoreSuccess: (newEntries: ScratchpadEntryApi[]) => ({ newEntries }),
+        loadMoreFailure: true,
     }),
 
     loaders(({ values }) => ({
@@ -189,8 +199,7 @@ export const scratchpadLogic = kea<scratchpadLogicType>([
         expandedNamespaces: [
             [] as string[],
             {
-                toggleNamespace: (state, { namespace }) =>
-                    state.includes(namespace) ? state.filter((n) => n !== namespace) : [...state, namespace],
+                setExpandedNamespaces: (_, { expandedNamespaces }) => expandedNamespaces,
                 setGrouping: () => [],
             },
         ],
@@ -219,6 +228,26 @@ export const scratchpadLogic = kea<scratchpadLogicType>([
                 loadFullContentSuccess: (state, { key }) => state.filter((k) => k !== key),
                 loadFullContentFailure: (state, { key }) => state.filter((k) => k !== key),
                 loadEntriesSuccess: () => [],
+            },
+        ],
+        entries: {
+            loadMoreSuccess: (state, { newEntries }) => [...(state ?? []), ...newEntries],
+        },
+        hasMore: [
+            false,
+            {
+                loadEntries: () => false,
+                loadEntriesSuccess: (_, { entries }) => entries.length === SCRATCHPAD_FETCH_LIMIT,
+                loadMoreSuccess: (_, { newEntries }) => newEntries.length === SCRATCHPAD_FETCH_LIMIT,
+            },
+        ],
+        loadingMore: [
+            false,
+            {
+                loadEntries: () => false,
+                loadMore: () => true,
+                loadMoreSuccess: () => false,
+                loadMoreFailure: () => false,
             },
         ],
     }),
@@ -263,6 +292,32 @@ export const scratchpadLogic = kea<scratchpadLogicType>([
         setSearchText: async (_, breakpoint) => {
             await breakpoint(SEARCH_DEBOUNCE_MS)
             actions.loadEntries()
+        },
+
+        loadMore: async () => {
+            const teamId = teamLogic.values.currentTeamId
+            const entries = values.entries
+            const dateTo = entries?.[entries.length - 1]?.updated_at
+            if (!teamId || !dateTo) {
+                actions.loadMoreFailure()
+                return
+            }
+            const text = values.searchText.trim()
+            try {
+                const newEntries = await signalsScoutScratchpadSearch(String(teamId), {
+                    text: text || undefined,
+                    date_to: dateTo,
+                    limit: SCRATCHPAD_FETCH_LIMIT,
+                    content_max_chars: SCRATCHPAD_PREVIEW_CHARS,
+                })
+                if (values.searchText.trim() !== text) {
+                    actions.loadMoreFailure()
+                    return
+                }
+                actions.loadMoreSuccess(newEntries)
+            } catch {
+                actions.loadMoreFailure()
+            }
         },
 
         // Opening a card is the only moment a full body is worth fetching — and only when the

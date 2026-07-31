@@ -84,7 +84,7 @@ export function ReportDetailBadges({
 
 /** Shared explainer for the finding count in the meta line and the Evidence section. */
 const FINDINGS_TOOLTIP =
-    'Findings are the individual pieces of evidence – signals from your connected sources and scouts – that were grouped into this report.'
+    'Findings are the individual pieces of evidence from your connected sources and scouts that were grouped into this report.'
 
 /**
  * Single meta line under the title: status/actionability chips, then dot-separated stats
@@ -375,7 +375,7 @@ export function InboxDetailFrame({
                             </LemonMarkdown>
                         ) : (
                             <p className={`text-sm text-tertiary m-0${summaryPending ? ' italic' : ''}`}>
-                                No summary yet – an agent is still investigating.
+                                No summary yet. An agent is still investigating.
                             </p>
                         )}
                         {trailingCharts.length > 0 && (

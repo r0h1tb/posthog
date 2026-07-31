@@ -6,7 +6,7 @@ import { initKeaTests } from '~/test/init'
 
 import type { ScratchpadEntryApi } from 'products/signals/frontend/generated/api.schemas'
 
-import { SCRATCHPAD_PREVIEW_CHARS, scratchpadLogic } from './scratchpadLogic'
+import { SCRATCHPAD_FETCH_LIMIT, SCRATCHPAD_PREVIEW_CHARS, scratchpadLogic } from './scratchpadLogic'
 
 const SCRATCHPAD_URL = '/api/projects/:team_id/signals/scout/scratchpad/'
 
@@ -63,6 +63,36 @@ describe('scratchpadLogic', () => {
         await expectLogic(logic).toFinishAllListeners()
 
         expect(searchRequests[0].get('content_max_chars')).toEqual(String(SCRATCHPAD_PREVIEW_CHARS))
+    })
+
+    it('loads entries beyond the first capped page using the oldest timestamp as a cursor', async () => {
+        const firstPage = Array.from({ length: SCRATCHPAD_FETCH_LIMIT }, (_, index) =>
+            entry(`pattern:${index}`, `note ${index}`)
+        )
+        const nextPageEntry = entry('pattern:older', 'older note')
+        useMocks({
+            get: {
+                [SCRATCHPAD_URL]: ({ request }) => {
+                    const params = new URL(request.url).searchParams
+                    searchRequests.push(params)
+                    return params.has('date_to') ? [200, [nextPageEntry]] : [200, firstPage]
+                },
+            },
+        })
+        logic.unmount()
+        searchRequests = []
+        logic.mount()
+        await expectLogic(logic).toFinishAllListeners()
+
+        expect(logic.values.hasMore).toBe(true)
+
+        logic.actions.loadMore()
+        await expectLogic(logic).toFinishAllListeners()
+
+        expect(searchRequests[1].get('date_to')).toEqual(firstPage.at(-1)?.updated_at)
+        expect(logic.values.entries).toHaveLength(SCRATCHPAD_FETCH_LIMIT + 1)
+        expect(logic.values.entries?.at(-1)).toEqual(nextPageEntry)
+        expect(logic.values.hasMore).toBe(false)
     })
 
     it('fetches the full body by exact key when a truncated entry is expanded', async () => {

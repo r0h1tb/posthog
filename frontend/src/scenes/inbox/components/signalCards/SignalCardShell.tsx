@@ -1,3 +1,4 @@
+import { LemonCard } from 'lib/lemon-ui/LemonCard'
 import { ScoutLink } from 'lib/signals/ScoutLink'
 import { scoutDisplayName, signalCardSourceLine } from 'lib/signals/signalCardSourceLine'
 import type { SignalNode } from 'scenes/debug/signals/types'
@@ -32,13 +33,8 @@ export function SignalCardHeader({
     return (
         <div className="flex items-center gap-2 mb-2">
             {Icon ? (
-                <span
-                    className="inline-flex shrink-0 items-center"
-                    // eslint-disable-next-line react/forbid-dom-props
-                    style={{ color: meta?.color }}
-                    aria-hidden
-                >
-                    <Icon className="text-base" />
+                <span className="inline-flex shrink-0 items-center" aria-hidden>
+                    <Icon className={`text-base ${meta.colorClass}`} />
                 </span>
             ) : (
                 <span className="size-2.5 rounded-full shrink-0 bg-border" />
@@ -72,9 +68,9 @@ export function SignalCardShell({
     children: React.ReactNode
 }): JSX.Element {
     return (
-        <div className="border rounded p-3 bg-surface-primary">
+        <LemonCard hoverEffect={false} className="p-3 shadow-sm">
             <SignalCardHeader signal={signal} label={label} rightSlot={rightSlot} />
             {children}
-        </div>
+        </LemonCard>
     )
 }

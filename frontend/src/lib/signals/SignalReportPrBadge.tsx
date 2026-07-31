@@ -1,12 +1,10 @@
-import { IconPullRequest } from '@posthog/icons'
-import { LemonTag, Link, Tooltip } from '@posthog/lemon-ui'
+import { IconCheck, IconPullRequest, IconX } from '@posthog/icons'
+import { Link, Tooltip } from '@posthog/lemon-ui'
+
+import { cn } from 'lib/utils/css-classes'
 
 import { PR_BADGE_STATE, type PrBadgeState } from './prState'
 
-/**
- * PR status badge for the card's top-right corner: a state-colored tag with the pull-request
- * icon and `#1234`. When a PR URL is known the whole badge is the GitHub link itself.
- */
 export function PrBadge({
     prNumber,
     prUrl,
@@ -16,11 +14,19 @@ export function PrBadge({
     prUrl?: string | null
     state: PrBadgeState
 }): JSX.Element {
-    const { label, type } = PR_BADGE_STATE[state]
+    const { label, className } = PR_BADGE_STATE[state]
+    const StateIcon = state === 'merged' ? IconCheck : state === 'closed' ? IconX : IconPullRequest
     const badge = (
-        <LemonTag type={type} size="small" icon={<IconPullRequest />} className="font-mono tabular-nums">
-            #{prNumber}
-        </LemonTag>
+        <span
+            className={cn(
+                'inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-xs font-medium shadow-sm',
+                className
+            )}
+        >
+            <StateIcon className="size-3.5" />
+            <span>{label}</span>
+            <span className="font-mono tabular-nums">#{prNumber}</span>
+        </span>
     )
 
     if (!prUrl) {
@@ -35,6 +41,7 @@ export function PrBadge({
                 disableClientSideRouting
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`Open pull request #${prNumber} (${label}) on GitHub`}
+                className="no-underline"
             >
                 {badge}
             </Link>

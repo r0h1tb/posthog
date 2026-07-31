@@ -32,7 +32,7 @@ export function ReportActivitySection({ report }: { report: SignalReport }): JSX
             collapsible
             defaultCollapsed
             rightSlot={
-                <span className="text-[0.6875rem] text-tertiary tabular-nums">
+                <span className="text-xs text-tertiary tabular-nums">
                     {reportArtefacts.length} {reportArtefacts.length === 1 ? 'entry' : 'entries'}
                 </span>
             }

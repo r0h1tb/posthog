@@ -139,7 +139,7 @@ const ScoutRunRow = memo(function ScoutRunRow({
                         </LemonMarkdown>
                     ) : status === 'failed' ? (
                         <span className="text-sm italic text-muted">
-                            No summary — the run ended before writing its close-out. The task run in PostHog is the only
+                            No summary. The run ended before writing its close-out. The task run in PostHog is the only
                             diagnostic.
                         </span>
                     ) : null}
