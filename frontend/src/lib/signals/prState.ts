@@ -4,17 +4,19 @@ export const PR_BADGE_STATE = {
     open: {
         label: 'Open',
         className: 'border-success bg-success-highlight text-success',
-        hoverClassName: 'hover:bg-fill-success-secondary',
+        hoverClassName:
+            'hover:border-success-dark hover:text-success-dark dark:hover:border-success-light dark:hover:text-success-light',
     },
     merged: {
         label: 'Merged',
         className: 'border-accent bg-accent-highlight-secondary text-accent',
-        hoverClassName: 'hover:bg-accent-highlight-primary',
+        hoverClassName: 'hover:border-accent-dark hover:text-accent-hover dark:hover:border-accent-hover',
     },
     closed: {
         label: 'Closed',
         className: 'border-danger bg-danger-highlight text-danger',
-        hoverClassName: 'hover:bg-fill-error-secondary',
+        hoverClassName:
+            'hover:border-danger-dark hover:text-danger-dark dark:hover:border-danger-light dark:hover:text-danger-light',
     },
 }
 
