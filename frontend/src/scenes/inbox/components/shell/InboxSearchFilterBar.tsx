@@ -190,10 +190,9 @@ export function InboxSearchFilterBar({
     const activeSortKey = inboxSortOptionKey(sortField, sortDirection)
 
     // Selected scouts always stay listed (even if their config was since deleted) so they can be untoggled.
-    const scoutNames = [...new Set([...(scoutConfigs ?? []).map((c) => c.skill_name), ...scoutFilter])].sort((a, b) => {
-        const selectionOrder = Number(scoutFilter.includes(b)) - Number(scoutFilter.includes(a))
-        return selectionOrder || prettifyScoutSkillName(a).localeCompare(prettifyScoutSkillName(b))
-    })
+    const scoutNames = [...new Set([...(scoutConfigs ?? []).map((c) => c.skill_name), ...scoutFilter])].sort((a, b) =>
+        prettifyScoutSkillName(a).localeCompare(prettifyScoutSkillName(b))
+    )
 
     return (
         <div className="flex items-center gap-2 flex-wrap w-full">
