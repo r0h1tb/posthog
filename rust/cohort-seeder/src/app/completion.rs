@@ -155,7 +155,7 @@ enum DispatchKind {
 struct DispatchArm {
     pool: PgPool,
     producer: SeedTileProducer,
-    membership_topic: Arc<str>,
+    marker_topic: Arc<str>,
     max_inflight: NonZeroUsize,
     /// Caps how many dispatch tasks this replica runs at once. Every task produces
     /// `cohorts × COHORT_PARTITION_COUNT` tiles through the producer the chunk pipeline shares, so
@@ -183,6 +183,9 @@ pub struct CompletionDriver {
     /// The backfill kinds discovery binds. `[Behavioral]` unless the person seed path is on, which
     /// keeps a person run invisible to this protocol while its gate is off.
     kinds: &'static [RunKind],
+    /// The marker topic every persisted watch is anchored to. A run whose record names a different
+    /// one classifies as [`UndispatchedReason::TopicChanged`] and re-dispatches.
+    marker_topic: String,
     dispatch: Option<DispatchArm>,
     observe: Option<ObserveArm>,
     in_flight: Arc<Mutex<HashSet<RunId>>>,
@@ -194,11 +197,17 @@ pub struct CompletionDriver {
 
 impl CompletionDriver {
     /// Base driver with neither half armed. `main` adds the halves the config enables.
-    pub fn new(pool: PgPool, allowlist: TeamAllowlist, kinds: &'static [RunKind]) -> Self {
+    pub fn new(
+        pool: PgPool,
+        allowlist: TeamAllowlist,
+        kinds: &'static [RunKind],
+        marker_topic: String,
+    ) -> Self {
         Self {
             pool,
             allowlist,
             kinds,
+            marker_topic,
             dispatch: None,
             observe: None,
             in_flight: Arc::new(Mutex::new(HashSet::new())),
@@ -210,7 +219,6 @@ impl CompletionDriver {
     pub fn with_dispatch(
         mut self,
         producer: SeedTileProducer,
-        membership_topic: String,
         max_inflight: NonZeroUsize,
         max_concurrent_dispatches: NonZeroUsize,
         register_backfill: RegisterBackfillConfirmation,
@@ -218,7 +226,7 @@ impl CompletionDriver {
         self.dispatch = Some(DispatchArm {
             pool: self.pool.clone(),
             producer,
-            membership_topic: Arc::from(membership_topic),
+            marker_topic: Arc::from(self.marker_topic.as_str()),
             max_inflight,
             dispatch_slots: Arc::new(Semaphore::new(max_concurrent_dispatches.get())),
             register_backfill,
@@ -235,7 +243,10 @@ impl CompletionDriver {
         directives: watch::Sender<WatchDirectives>,
     ) -> Self {
         self.observe = Some(ObserveArm {
-            store: Arc::new(PgObservationStore::new(self.pool.clone())),
+            store: Arc::new(PgObservationStore::new(
+                self.pool.clone(),
+                self.marker_topic.clone(),
+            )),
             committed,
             topic_ends,
             directives,
@@ -247,13 +258,16 @@ impl CompletionDriver {
     /// and observe the reconciling ones (observe arm). A discovery failure is logged and retried next
     /// tick; the dark path (driver absent) costs zero queries.
     pub async fn tick(&self) {
-        let discovered = match discover_completions(&self.pool, &self.allowlist, self.kinds).await {
-            Ok(discovered) => discovered,
-            Err(error) => {
-                warn!(error = %error, "completion discovery failed");
-                return;
-            }
-        };
+        let discovered =
+            match discover_completions(&self.pool, &self.allowlist, self.kinds, &self.marker_topic)
+                .await
+            {
+                Ok(discovered) => discovered,
+                Err(error) => {
+                    warn!(error = %error, "completion discovery failed");
+                    return;
+                }
+            };
 
         let now = Utc::now();
         // Per kind, not summed: "person runs are piling up undispatched" is the failure this protocol
@@ -737,7 +751,7 @@ async fn run_dispatch(context: &DispatchArm, run_id: RunId, run_kind: RunKind, k
     match dispatch_and_record(
         &context.pool,
         &context.producer,
-        &context.membership_topic,
+        &context.marker_topic,
         context.max_inflight,
         KAFKA_METADATA_TIMEOUT,
         certified,
@@ -786,7 +800,7 @@ pub struct RecordedDispatch {
 pub async fn dispatch_and_record(
     pool: &PgPool,
     producer: &SeedTileProducer,
-    membership_topic: &str,
+    marker_topic: &str,
     max_inflight: NonZeroUsize,
     metadata_timeout: Duration,
     certified: CertifiedDispatch,
@@ -794,7 +808,7 @@ pub async fn dispatch_and_record(
 ) -> Result<RecordedDispatch, DispatchRecordError> {
     let positions = {
         let producer = producer.clone();
-        let topic = membership_topic.to_string();
+        let topic = marker_topic.to_string();
         tokio::task::spawn_blocking(move || {
             producer.capture_topic_offsets(&topic, metadata_timeout)
         })
@@ -814,6 +828,7 @@ pub async fn dispatch_and_record(
 
     let hwms = ReconcileHwms::try_from(&receipt).map_err(DispatchRecordError::Hwms)?;
     let watch = MarkerWatch {
+        topic: marker_topic.to_string(),
         positions,
         ends: None,
     };
@@ -841,7 +856,7 @@ impl TryFrom<&ReconcileDispatchReceipt> for ReconcileHwms {
 pub enum DispatchRecordError {
     #[error("joining the offset-capture task")]
     CaptureTask(#[source] JoinError),
-    #[error("capturing the membership topic start positions")]
+    #[error("capturing the marker topic start positions")]
     CaptureOffsets(#[source] CaptureOffsetsError),
     #[error("producing the reconcile control tiles")]
     Execute(#[source] ReconcileDispatchError),
