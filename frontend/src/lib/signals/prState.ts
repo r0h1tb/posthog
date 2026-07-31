@@ -9,8 +9,10 @@ export const PR_BADGE_STATE = {
     },
     merged: {
         label: 'Merged',
-        className: 'border-accent bg-accent-highlight-secondary text-accent',
-        hoverClassName: 'hover:border-accent-dark hover:text-accent-hover dark:hover:border-accent-hover',
+        className:
+            'border-[var(--color-purple-600)] bg-[color-mix(in_oklab,var(--color-purple-600)_10%,transparent)] text-[var(--color-purple-700)] dark:border-[var(--color-purple-400)] dark:bg-[color-mix(in_oklab,var(--color-purple-400)_10%,transparent)] dark:text-[var(--color-purple-300)]',
+        hoverClassName:
+            'hover:border-[var(--color-purple-800)] hover:text-[var(--color-purple-800)] dark:hover:border-[var(--color-purple-200)] dark:hover:text-[var(--color-purple-200)]',
     },
     closed: {
         label: 'Closed',
