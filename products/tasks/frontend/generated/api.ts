@@ -43,6 +43,7 @@ import type {
     PaginatedTaskRunDetailDTOListApi,
     PaginatedTaskSummaryDTOListApi,
     PaginatedTaskThreadMessageDTOListApi,
+    PatchedChannelInstructionsWriteApi,
     PatchedChannelWriteApi,
     PatchedLoopWriteApi,
     PatchedSandboxCustomImageUpdateApi,
@@ -1071,6 +1072,28 @@ export const taskChannelsInstructionsUpdate = async (
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         body: JSON.stringify(channelInstructionsWriteApi),
+    })
+}
+
+export const getTaskChannelsInstructionsPartialUpdateUrl = (projectId: string, id: string) => {
+    return `/api/projects/${projectId}/task_channels/${id}/instructions/`
+}
+
+/**
+ * Publish a new version of the channel's CONTEXT.md instructions. Pass base_version (the version you read) so a concurrent edit is rejected with 409 instead of overwritten.
+ * @summary Publish channel instructions
+ */
+export const taskChannelsInstructionsPartialUpdate = async (
+    projectId: string,
+    id: string,
+    patchedChannelInstructionsWriteApi?: PatchedChannelInstructionsWriteApi,
+    options?: RequestInit
+): Promise<ChannelInstructionsDTOApi> => {
+    return apiMutator<ChannelInstructionsDTOApi>(getTaskChannelsInstructionsPartialUpdateUrl(projectId, id), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedChannelInstructionsWriteApi),
     })
 }
 
