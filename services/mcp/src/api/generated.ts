@@ -13149,7 +13149,7 @@ export namespace Schemas {
        *
        * * `error` - error
        * * `warning` - warning */
-      severity: UtmIssueSeverityEnum;
+      severity: DiagnosticSeverityEnum;
       /** Which kind of UTM problem this campaign has
        *
        * * `not_linked` - not_linked
