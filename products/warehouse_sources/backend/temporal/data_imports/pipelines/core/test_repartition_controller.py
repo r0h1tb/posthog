@@ -347,6 +347,82 @@ class TestRepartitionOOMHistoryTrigger:
         assert capture.call_args_list == []
 
 
+class TestCoarsenTrigger:
+    def _detect(self, team, schema: ExternalDataSchema, delta: deltalake.DeltaTable) -> None:
+        async_to_sync(ctrl.maybe_flag_for_repartition)(schema, schema.source, _make_job(team, schema), delta, logger)
+
+    def _fragmented_schema(self, team, **overrides) -> ExternalDataSchema:
+        return _make_schema(
+            team,
+            {
+                "partitioning_enabled": True,
+                "partition_mode": "md5",
+                "partition_count": 16,
+                "partitioning_keys": ["id"],
+                "last_repartition_at": (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=30)).isoformat(),
+                **overrides,
+            },
+        )
+
+    def test_flags_an_over_fragmented_table_for_coarsening(self, team):
+        # The reverse direction: a table split far below what memory safety needs pays for every one of
+        # those pieces on each merge. Most tables in this state were put there by the finer path
+        # reacting to failures that were never about size, and nothing else brings them back.
+        schema = self._fragmented_schema(team)
+        with tempfile.TemporaryDirectory() as d:
+            delta = _write_partitioned_delta(f"{d}/t", [str(bucket) for bucket in range(16)])
+            with (
+                patch.object(ctrl, "target_partition_bytes", return_value=10**12),
+                patch.object(ctrl, "is_auto_repartition_enabled", return_value=True),
+                patch.object(ctrl, "is_auto_defragment_enabled", return_value=True),
+                patch.object(ctrl, "capture_repartition_event") as capture,
+            ):
+                self._detect(team, schema, delta)
+
+        schema.refresh_from_db()
+        pending = schema.repartition_pending
+        assert pending is not None
+        assert pending["trigger_reason"] == "defragmentation"
+        assert pending["partition_mode"] == "md5"
+        assert pending["partition_count"] < 16
+        assert capture.call_args.args[0] == "warehouse_repartition_flagged"
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            # Any memory-attributed OOM means bigger partitions are the wrong direction for this table.
+            "recent_oom",
+            # A layout that was just rewritten hasn't had a chance to prove itself; undoing it within
+            # the day is how the two directions would start handing the table back and forth.
+            "fresh_layout",
+            # Enrolment is per-schema, like the finer path's.
+            "flag_disabled",
+        ],
+    )
+    def test_does_not_coarsen_when_a_guard_applies(self, team, case):
+        overrides = (
+            {"last_repartition_at": datetime.datetime.now(datetime.UTC).isoformat()} if case == "fresh_layout" else {}
+        )
+        schema = self._fragmented_schema(team, **overrides)
+        if case == "recent_oom":
+            ExternalDataSchemaOOMEvent.objects.for_team(schema.team_id).create(
+                team_id=schema.team_id, schema=schema, run_id="run-1", memory_fraction=0.95
+            )
+
+        with tempfile.TemporaryDirectory() as d:
+            delta = _write_partitioned_delta(f"{d}/t", [str(bucket) for bucket in range(16)])
+            with (
+                patch.object(ctrl, "target_partition_bytes", return_value=10**12),
+                patch.object(ctrl, "is_auto_repartition_enabled", return_value=True),
+                patch.object(ctrl, "is_auto_defragment_enabled", return_value=case != "flag_disabled"),
+                patch.object(ctrl, "capture_repartition_event"),
+            ):
+                self._detect(team, schema, delta)
+
+        schema.refresh_from_db()
+        assert schema.repartition_pending is None
+
+
 # An Exception-derived cancellation, named exactly `CancelledError`: models how `async_to_sync` can
 # surface a worker-shutdown cancel so it slips past a plain BaseException catch. `_is_cancellation`
 # keys on the type name, so this must be named `CancelledError`.

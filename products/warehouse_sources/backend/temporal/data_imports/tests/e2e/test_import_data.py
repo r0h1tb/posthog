@@ -599,6 +599,9 @@ def test_report_heartbeat_timeout_heartbeat_not_within_timeout(team):
                 last_heartbeat_timestamp=past_time.timestamp(),
                 gap_between_beats=30.0,
                 heartbeat_timeout_seconds=mock_info.heartbeat_timeout.total_seconds(),
+                # This beat carries no memory reading, so the death is unclassified and still counts.
+                memory_fraction=None,
+                memory_related=True,
             )
 
             mock_posthog_capture.assert_called_once_with(
@@ -617,5 +620,7 @@ def test_report_heartbeat_timeout_heartbeat_not_within_timeout(team):
                     "workflow_run_id": mock_info.workflow_run_id,
                     "workflow_type": mock_info.workflow_type,
                     "attempt": mock_info.attempt,
+                    "memory_fraction": None,
+                    "memory_related": True,
                 },
             )

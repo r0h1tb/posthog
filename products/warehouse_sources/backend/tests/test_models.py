@@ -332,8 +332,24 @@ class TestExternalDataSchemaOOMEvent(BaseTest):
     def _schema(self, name: str) -> ExternalDataSchema:
         return ExternalDataSchema.objects.create(team_id=self.team.pk, source=self._source(), name=name)
 
-    def _oom(self, schema: ExternalDataSchema, *, age_days: float = 0) -> ExternalDataSchemaOOMEvent:
-        event = ExternalDataSchemaOOMEvent.objects.for_team(self.team.pk).create(team_id=self.team.pk, schema=schema)
+    def _oom(
+        self,
+        schema: ExternalDataSchema,
+        *,
+        age_days: float = 0,
+        memory_fraction: float | None = None,
+        run_id: str | None = None,
+        host: str | None = None,
+        max_partition_bytes: int | None = None,
+    ) -> ExternalDataSchemaOOMEvent:
+        event = ExternalDataSchemaOOMEvent.objects.for_team(self.team.pk).create(
+            team_id=self.team.pk,
+            schema=schema,
+            memory_fraction=memory_fraction,
+            run_id=run_id,
+            host=host,
+            max_partition_bytes=max_partition_bytes,
+        )
         if age_days:
             # created_at is auto_now_add, so backdate via an update to place the row outside the window.
             ExternalDataSchemaOOMEvent.objects.unscoped().filter(pk=event.pk).update(
@@ -374,6 +390,68 @@ class TestExternalDataSchemaOOMEvent(BaseTest):
         # An OOM recorded after the repartition still counts: the rewrite did not fix it, so this is a
         # real escalation the controller should act on.
         self._oom(schema)
+        assert ExternalDataSchemaOOMEvent.recent_count(schema, days=7) == 1
+
+    @parameterized.expand(
+        [
+            # A worker killed by a deploy, an eviction or a lost heartbeat dies with memory at normal
+            # levels. Counting those is what drove healthy tables into ever-finer partitions.
+            ("idle_worker_is_not_an_oom", 0.12, 0),
+            ("pressure_below_threshold_is_not_an_oom", 0.55, 0),
+            ("near_the_limit_is_an_oom", 0.95, 1),
+            # Beats recorded before memory sampling shipped carry no reading at all. Unknown must keep
+            # counting, or a partial rollout would silently switch the trigger off.
+            ("unknown_still_counts", None, 1),
+        ]
+    )
+    def test_recent_count_only_counts_memory_related_deaths(
+        self, _name: str, memory_fraction: float | None, expected: int
+    ) -> None:
+        schema = self._schema("orders")
+        self._oom(schema, memory_fraction=memory_fraction, run_id="run-1")
+
+        assert ExternalDataSchemaOOMEvent.recent_count(schema, days=7) == expected
+
+    def test_recent_count_counts_runs_not_retry_attempts(self) -> None:
+        # One job records an event per retry attempt, so counting rows lets a single bad job cross the
+        # threshold on its own, which is not the repeated, independent failure the trigger looks for.
+        schema = self._schema("orders")
+        for _ in range(5):
+            self._oom(schema, run_id="run-1", memory_fraction=0.9)
+
+        assert ExternalDataSchemaOOMEvent.recent_count(schema, days=7) == 1
+
+        self._oom(schema, run_id="run-2", memory_fraction=0.9)
+        assert ExternalDataSchemaOOMEvent.recent_count(schema, days=7) == 2
+
+    def test_recent_count_drops_co_tenants_of_another_schemas_oom(self) -> None:
+        # A pod OOM kills every activity in the container, so one oversized table makes its co-tenants
+        # record real, memory-gated events too. Shrinking those victims is both useless and harmful.
+        victim = self._schema("small_table")
+        culprit = self._schema("huge_table")
+        for run in ("run-1", "run-2", "run-3"):
+            self._oom(victim, run_id=run, host="pod-a", memory_fraction=0.97, max_partition_bytes=1_000)
+            self._oom(culprit, run_id=run, host="pod-a", memory_fraction=0.97, max_partition_bytes=9_000_000_000)
+
+        assert ExternalDataSchemaOOMEvent.recent_count(victim, days=7) == 0
+        assert ExternalDataSchemaOOMEvent.recent_count(culprit, days=7) == 3
+
+    def test_recent_count_keeps_events_a_co_tenant_cannot_explain(self) -> None:
+        # Blame must stay narrow: a bigger table that died on a different worker, or on the same worker
+        # long before, says nothing about this kill. Dropping those would disable the trigger entirely.
+        schema = self._schema("orders")
+        other = self._schema("huge_table")
+        self._oom(schema, run_id="run-1", host="pod-a", memory_fraction=0.97, max_partition_bytes=1_000)
+        self._oom(other, run_id="run-1", host="pod-b", memory_fraction=0.97, max_partition_bytes=9_000_000_000)
+        self._oom(
+            other,
+            run_id="run-2",
+            host="pod-a",
+            memory_fraction=0.97,
+            max_partition_bytes=9_000_000_000,
+            age_days=1,
+        )
+
         assert ExternalDataSchemaOOMEvent.recent_count(schema, days=7) == 1
 
 

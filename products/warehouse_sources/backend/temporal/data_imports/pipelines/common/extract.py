@@ -11,6 +11,7 @@ from temporalio import activity
 from posthog.exceptions_capture import capture_exception
 from posthog.redis import get_async_client
 from posthog.sync import database_sync_to_async_pool
+from posthog.temporal.common.memory import memory_fraction_from_heartbeat
 from posthog.utils import get_machine_id
 
 from products.warehouse_sources.backend.temporal.data_imports.pipelines.common.load import get_incremental_field_value
@@ -139,12 +140,24 @@ def report_heartbeat_timeout(inputs: "ImportDataActivityInputs", logger: Filteri
 
         gap_between_beats = current_attempt_scheduled_time.timestamp() - float(last_heartbeat_timestamp)
         if gap_between_beats > heartbeat_timeout.total_seconds():
+            from products.warehouse_sources.backend.models.oom_event import (  # noqa: PLC0415 — Django models must not be imported at this activity module's load time
+                is_memory_related,
+            )
+
+            # The gap only says the worker stopped heartbeating: an OOM kill, a deploy, an eviction and a
+            # heartbeat lost by a healthy worker all look identical here. The memory reading the beat
+            # carries is what separates them.
+            memory_fraction = memory_fraction_from_heartbeat(last_heartbeat)
+            memory_related = is_memory_related(memory_fraction)
+
             logger.debug(
                 "Last heartbeat was longer ago than the heartbeat timeout allows. Likely due to a pod OOM or restart.",
                 last_heartbeat_host=last_heartbeat_host,
                 last_heartbeat_timestamp=last_heartbeat_timestamp,
                 gap_between_beats=gap_between_beats,
                 heartbeat_timeout_seconds=heartbeat_timeout.total_seconds(),
+                memory_fraction=memory_fraction,
+                memory_related=memory_related,
             )
 
             posthoganalytics.capture(
@@ -163,23 +176,37 @@ def report_heartbeat_timeout(inputs: "ImportDataActivityInputs", logger: Filteri
                     "workflow_run_id": info.workflow_run_id,
                     "workflow_type": info.workflow_type,
                     "attempt": info.attempt,
+                    "memory_fraction": memory_fraction,
+                    "memory_related": memory_related,
                 },
             )
 
             # Durable per-occurrence OOM record for the repartition trigger to read. Best-effort:
             # a write failure here must never disrupt the sync.
             try:
-                from products.warehouse_sources.backend.models.oom_event import (  # noqa: PLC0415 — Django models must not be imported at this activity module's load time
+                from products.warehouse_sources.backend.models.external_data_schema import (  # noqa: PLC0415 — as above
+                    ExternalDataSchema,
+                )
+                from products.warehouse_sources.backend.models.oom_event import (  # noqa: PLC0415 — as above
                     ExternalDataSchemaOOMEvent,
                 )
 
                 if inputs.schema_id is not None:
+                    schema = (
+                        ExternalDataSchema.objects.filter(id=inputs.schema_id, team_id=inputs.team_id)
+                        .only("sync_type_config")
+                        .first()
+                    )
                     ExternalDataSchemaOOMEvent.objects.for_team(inputs.team_id).create(
                         team_id=inputs.team_id,
                         schema_id=inputs.schema_id,
                         run_id=inputs.run_id,
                         host=last_heartbeat_host,
                         gap_seconds=gap_between_beats,
+                        memory_fraction=memory_fraction,
+                        # Snapshot: blame between co-tenants of one pod OOM is judged on how big each
+                        # table was when the kill happened, not on how big it is when read back.
+                        max_partition_bytes=schema.max_partition_bytes if schema else None,
                     )
             except Exception as record_error:
                 logger.debug(f"Failed to record OOM event for schema {inputs.schema_id}: {record_error}")

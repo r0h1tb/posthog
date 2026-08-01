@@ -28,6 +28,7 @@ from products.warehouse_sources.backend.models.external_data_schema import Exter
 from products.warehouse_sources.backend.models.oom_event import ExternalDataSchemaOOMEvent
 from products.warehouse_sources.backend.temporal.data_imports.pipelines.core.repartition import (
     measure_partition_bytes,
+    select_coarsen_target,
     select_repartition_target,
 )
 from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline_v3.load.metrics import (
@@ -38,6 +39,22 @@ if TYPE_CHECKING:
     from products.warehouse_sources.backend.models.external_data_source import ExternalDataSource
 
 WAREHOUSE_AUTO_REPARTITION_FLAG = "data-warehouse-auto-repartition"
+WAREHOUSE_AUTO_DEFRAGMENT_FLAG = "data-warehouse-auto-defragment"
+
+# Coarsening gates. The two directions deliberately don't meet: a table is split finer above the budget
+# and merged coarser only below an eighth of it, and a coarsen aims at half the budget. So a freshly
+# coarsened table has to double before the finer path can claim it, and a freshly split one has to
+# shrink eightfold before this path can. Without that gap the controller would hand tables back and
+# forth every cooldown.
+COARSEN_TRIGGER_DIVISOR = 8
+COARSEN_TARGET_DIVISOR = 2
+# Below this, fragmentation costs little and a rewrite isn't worth its own risk.
+COARSEN_MIN_PARTITIONS = 16
+# Let a layout prove itself over a few daily sync cycles before undoing it.
+COARSEN_MIN_LAYOUT_AGE_SECONDS = 7 * 24 * 60 * 60
+# Longer than the finer path's window: making partitions bigger is the one change that can cause the
+# failure it's meant to prevent, so it takes a longer clean run to justify than a split does.
+COARSEN_OOM_FREE_DAYS = 14
 
 # Don't repartition the same table more than once a day — the budget has headroom, so a table that
 # trips repeatedly should converge over a few daily cycles, not thrash every sync.
@@ -68,7 +85,15 @@ def repartition_oom_window_days() -> int:
 
 
 def is_auto_repartition_enabled(schema: ExternalDataSchema) -> bool:
-    """Evaluate the rollout flag for this schema.
+    return _is_flag_enabled(schema, WAREHOUSE_AUTO_REPARTITION_FLAG)
+
+
+def is_auto_defragment_enabled(schema: ExternalDataSchema) -> bool:
+    return _is_flag_enabled(schema, WAREHOUSE_AUTO_DEFRAGMENT_FLAG)
+
+
+def _is_flag_enabled(schema: ExternalDataSchema, flag: str) -> bool:
+    """Evaluate a rollout flag for this schema.
 
     `schema_id`, `team_id`, and `source_type` are passed as person properties so the flag can be
     released to a single table — set a release condition `schema_id = <id>` to dogfood the controller
@@ -83,7 +108,7 @@ def is_auto_repartition_enabled(schema: ExternalDataSchema) -> bool:
     try:
         return bool(
             posthoganalytics.feature_enabled(
-                WAREHOUSE_AUTO_REPARTITION_FLAG,
+                flag,
                 str(team.uuid),
                 groups={"organization": str(team.organization_id), "project": str(team.id)},
                 person_properties={
@@ -133,6 +158,118 @@ def _cooldown_seconds_remaining(schema: ExternalDataSchema) -> float:
     except (ValueError, TypeError):
         return 0.0
     return max(0.0, REPARTITION_COOLDOWN_SECONDS - (timezone.now() - last_dt).total_seconds())
+
+
+def _seconds_since_last_repartition(schema: ExternalDataSchema) -> float | None:
+    """Age of the current layout, or None when this controller never rewrote the table."""
+    last = schema.last_repartition_at
+    if not last:
+        return None
+    try:
+        last_dt = parser.parse(last)
+    except (ValueError, TypeError):
+        return None
+    return (timezone.now() - last_dt).total_seconds()
+
+
+async def maybe_flag_for_coarsening(
+    schema: ExternalDataSchema,
+    source: ExternalDataSource,
+    job: ExternalDataJob,
+    partition_bytes: dict[str | None, int],
+    recent_oom_count: int,
+    logger: FilteringBoundLogger,
+    *,
+    budget: int,
+    max_bytes: int,
+) -> None:
+    """Flag an over-fragmented table to be rebuilt into fewer, larger partitions.
+
+    The counterpart to the finer path, for tables that ended up split far below what memory safety
+    needs, most of them by that path reacting to failures partition size never caused. Thousands of
+    tiny partitions mean thousands of per-partition merge commits, which is its own way to make a sync
+    slow enough to look like the problem the split was meant to solve.
+
+    Every gate here is about only rewriting a table whose current layout is both clearly wasteful and
+    clearly safe to undo. Called from `maybe_flag_for_repartition`'s healthy branch, so a table needing
+    a finer layout never reaches it. Never raises (the caller swallows).
+    """
+    measured_partitions = len(partition_bytes)
+    if measured_partitions < COARSEN_MIN_PARTITIONS:
+        return
+    if max_bytes * COARSEN_TRIGGER_DIVISOR > budget:
+        return
+    # Any OOM history at all disqualifies coarsening: the memory-gated signal means this table really
+    # did run out of memory, and bigger partitions are the wrong direction for that.
+    if recent_oom_count > 0:
+        return
+    if schema.repartition_pending is not None or schema.repartition_swap is not None:
+        return
+    layout_age = _seconds_since_last_repartition(schema)
+    if layout_age is not None and layout_age < COARSEN_MIN_LAYOUT_AGE_SECONDS:
+        return
+
+    if not await asyncio.to_thread(is_auto_defragment_enabled, schema):
+        await logger.adebug(
+            f"repartition: table is over-fragmented but coarsening is disabled by feature flag "
+            f"schema_id={schema.id} max_partition_bytes={max_bytes} partition_count={measured_partitions}",
+            schema_id=str(schema.id),
+            max_partition_bytes=max_bytes,
+            partition_count=measured_partitions,
+        )
+        return
+
+    # The 7-day window the caller already checked can miss an OOM that a repartition has since reset,
+    # so re-ask over the longer window before making partitions bigger.
+    long_window_oom_count = await asyncio.to_thread(
+        ExternalDataSchemaOOMEvent.recent_count, schema, days=COARSEN_OOM_FREE_DAYS
+    )
+    if long_window_oom_count > 0:
+        return
+
+    target, reason = await asyncio.to_thread(
+        select_coarsen_target, schema, partition_bytes, budget // COARSEN_TARGET_DIVISOR
+    )
+    if target is None:
+        await logger.adebug(
+            f"repartition: table is over-fragmented but no coarser layout applies schema_id={schema.id} "
+            f"reason={reason} max_partition_bytes={max_bytes} partition_count={measured_partitions}",
+            schema_id=str(schema.id),
+            reason=reason,
+            max_partition_bytes=max_bytes,
+            partition_count=measured_partitions,
+        )
+        return
+
+    pending = {**target.to_dict(), "trigger_reason": "defragmentation", "attempts": 0}
+    await asyncio.to_thread(schema.set_repartition_pending, pending)
+
+    props = base_event_props(schema, source, str(job.id))
+    props.update(
+        {
+            "max_partition_bytes_before": max_bytes,
+            "trigger_reason": "defragmentation",
+            "measured_partition_count_before": measured_partitions,
+            "partition_mode_after": target.partition_mode or "auto",
+            "partition_format_after": target.partition_format,
+            "partition_count_after": target.partition_count,
+            "partition_size_after": target.partition_size,
+        }
+    )
+    await asyncio.to_thread(capture_repartition_event, "warehouse_repartition_flagged", props)
+    await logger.ainfo(
+        f"repartition: flagged for coarsening on the next run schema_id={schema.id} "
+        f"max_partition_bytes={max_bytes} partition_count={measured_partitions} "
+        f"target_mode={target.partition_mode} target_format={target.partition_format} "
+        f"target_count={target.partition_count} target_size={target.partition_size}",
+        schema_id=str(schema.id),
+        max_partition_bytes=max_bytes,
+        partition_count=measured_partitions,
+        target_mode=target.partition_mode,
+        target_format=target.partition_format,
+        target_count=target.partition_count,
+        target_size=target.partition_size,
+    )
 
 
 async def maybe_flag_for_repartition(
@@ -204,6 +341,9 @@ async def maybe_flag_for_repartition(
                 budget_bytes=budget,
                 recent_oom_count=oom_count,
                 partition_count=len(partition_bytes),
+            )
+            await maybe_flag_for_coarsening(
+                schema, source, job, partition_bytes, oom_count, logger, budget=budget, max_bytes=max_bytes
             )
             return
 

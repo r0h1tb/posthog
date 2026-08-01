@@ -8,6 +8,7 @@ from structlog.types import FilteringBoundLogger
 from temporalio import activity
 
 from posthog.temporal.common.liveness_tracker import get_liveness_tracker
+from posthog.temporal.common.memory import memory_heartbeat_fields
 
 
 class HeartbeaterSync:
@@ -26,7 +27,7 @@ class HeartbeaterSync:
         tracker = get_liveness_tracker()
         while not stop_event.is_set():
             try:
-                extra_payload = {"host": socket.gethostname(), "ts": time.time()}
+                extra_payload = {"host": socket.gethostname(), "ts": time.time(), **memory_heartbeat_fields()}
                 activity.heartbeat(*details, extra_payload)
                 tracker.record_heartbeat()
                 self.log_debug("Heartbeat")

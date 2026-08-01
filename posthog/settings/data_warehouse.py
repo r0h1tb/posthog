@@ -45,6 +45,14 @@ DATA_WAREHOUSE_REPARTITION_OOM_WINDOW_DAYS = get_from_env(
     "DATA_WAREHOUSE_REPARTITION_OOM_WINDOW_DAYS", 7, type_cast=int
 )
 
+# Share of the worker's memory cgroup that must be in use at the last heartbeat before a silent worker
+# death is attributed to memory at all. Everything else that stops a worker heartbeating (deploys,
+# evictions, node drains, a lost heartbeat from a healthy worker) leaves memory at normal levels, and
+# repartitioning finer is not a fix for any of them. See ExternalDataSchemaOOMEvent.recent_count.
+DATA_WAREHOUSE_OOM_MEMORY_FRACTION_THRESHOLD = get_from_env(
+    "DATA_WAREHOUSE_OOM_MEMORY_FRACTION_THRESHOLD", 0.7, type_cast=float
+)
+
 # Pre-write vacuum runs when this many delta commits have accrued since the last vacuum. Decoupled from
 # merge success so tables that OOM their merge still get their tombstones cleared (the compact-after-merge
 # path never runs for them). Vacuum only deletes dead files, so it's memory-safe even on oversized tables.

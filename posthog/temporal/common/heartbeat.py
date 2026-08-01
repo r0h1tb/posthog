@@ -10,6 +10,7 @@ from structlog import get_logger
 from temporalio import activity
 
 from posthog.temporal.common.liveness_tracker import get_liveness_tracker
+from posthog.temporal.common.memory import memory_heartbeat_fields
 
 LOGGER = get_logger(__name__)
 
@@ -120,7 +121,7 @@ class LivenessHeartbeater(Heartbeater):
         while True:
             await asyncio.sleep(delay)
             try:
-                extra_payload = {"host": socket.gethostname(), "ts": time.time()}
+                extra_payload = {"host": socket.gethostname(), "ts": time.time(), **memory_heartbeat_fields()}
                 activity.heartbeat(*self.details, extra_payload)
                 self.tracker.record_heartbeat()
                 self.logger.debug("Heartbeat")
