@@ -229,14 +229,20 @@ class TestStripeSource:
         non_retryable_errors = self.source.get_non_retryable_errors()
         assert not any(key in other_error for key in non_retryable_errors)
 
-    def test_retryable_errors_match_rate_limit(self):
-        # A RateLimitError that survives _RateLimitRetryingRequestsClient's in-process backoff still
-        # gets retried by Temporal at the activity level; it must be classified as retryable so it's
-        # logged as a warning rather than tracked as an exception.
-        observed_error = (
-            "Request req_abc123: Request rate limit exceeded. You can learn more about rate limits here "
-            "https://stripe.com/docs/rate-limits."
-        )
+    @pytest.mark.parametrize(
+        "observed_error",
+        [
+            # A RateLimitError that survives _RateLimitRetryingRequestsClient's in-process backoff
+            # still gets retried by Temporal at the activity level; it must be classified as
+            # retryable so it's logged as a warning rather than tracked as an exception.
+            "Request req_abc123: Request rate limit exceeded. You can learn more about rate limits "
+            "here https://stripe.com/docs/rate-limits.",
+            # A generic APIError (Stripe-side 5xx) that survives the SDK's own retry budget is the
+            # same class of transient, self-recovering failure.
+            "Request req_FmshrAO36NK6xh: An unknown error occurred",
+        ],
+    )
+    def test_retryable_errors_match_transient_stripe_failures(self, observed_error):
         retryable_errors = self.source.get_retryable_errors()
         assert any(key in observed_error for key in retryable_errors)
 

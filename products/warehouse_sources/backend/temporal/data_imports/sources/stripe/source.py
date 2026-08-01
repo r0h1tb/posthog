@@ -297,7 +297,11 @@ If automatic creation failed due to a permissions error and you're using a restr
         # A 429 is already retried in-process by _RateLimitRetryingRequestsClient's Retry-After-aware
         # backoff (see stripe.py); if that budget still exhausts, Temporal's activity retry picks it
         # back up, so this is self-recovering rather than a tracked-exception-worthy failure.
-        return {"Request rate limit exceeded"}
+        #
+        # "An unknown error occurred" is Stripe's generic message for a non-4xx APIError (the base
+        # `_should_retry` already retries every 5xx in-process); one that survives that budget is a
+        # transient Stripe-side blip, not a bug, so classify it the same way.
+        return {"Request rate limit exceeded", "An unknown error occurred"}
 
     def _get_api_key(self, config: StripeSourceConfig, team_id: int) -> str:
         if config.auth_method.selection == "api_key":
